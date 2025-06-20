@@ -43,47 +43,56 @@ app.post("/download", (req, res) => {
     const { url, videoFormat, audioFormat } = req.body;
 
     console.log("Received download request:", req.body);
-    console.log(`URL: ${url}, Video Format: ${videoFormat}, Audio Format: ${audioFormat}`);
 
     if (!url || !videoFormat || !audioFormat) {
-        return res.status(400).json({ error: "YouTube URL and video and audio formates are required!" });
+        return res.status(400).json({ error: "YouTube URL and video and audio formats are required!" });
     }
 
-
-    console.log(`Downloading video from URL: ${url}\n Video Format: ${videoFormat}, Audio Format: ${audioFormat}`);
-
-    // Download video using yt-dlp
-    // const command = `yt-dlp --cookies cookies.txt -f "${format}" "${url}" -o "public/%(title)s.%(ext)s"`;
-
-    //create command
+    const downloadFolder = path.join(__dirname, "public");
+    
+    // Construct the yt-dlp command
     const command = `yt-dlp --cookies cookies.txt -f "${videoFormat}+${audioFormat}" "${url}" -o "${downloadFolder}/%(title)s.%(ext)s"`;
 
-    //generate direct download link
-    // const command=`yt-dlp --cookies cookies.txt --extractor-args "youtube:player_client=tv_embedded" -g -f 140 "${url}"`;   
+    console.log(`Executing command: ${command}`);
 
     exec(command, (error, stdout, stderr) => {
+        const output = stdout + stderr;
+        console.log(`Download stderr: ${stderr}`);
+        console.log(`Download output: ${stdout}`);
+
+        //check already downloaded file
+        const alreadyMatch = output.match(/\[download\]\s+(.+\.(mp4|mkv|webm|avi))\s+has already been downloaded/);
+        console.log(`Already Match: ${alreadyMatch}`);
+        
+        if (alreadyMatch && alreadyMatch[1]) {
+            const filename = path.basename(alreadyMatch[1].trim());
+            console.log(`File already downloaded: ${filename}`);
+            return res.json({ message: "Already downloaded", downloadLink: `/${filename}` });
+        }
+
+        // Check for merger completion (when combining video + audio)
+        const mergerMatch = output.match(/\[Merger\]\s+Merging formats into\s+"(.+\.(mkv|mp4|webm|avi))"/);
+        if (mergerMatch && mergerMatch[1]) {
+            const filename = path.basename(mergerMatch[1].trim());
+            console.log(`Download completed (merged): ${filename}`);
+            return res.json({ message: "Download ready!", downloadLink: `/${filename}` });
+        }
+
+        // Check for single file download completion
+        const destMatch = output.match(/\[download\]\s+Destination:\s+(.+\.(mp4|mkv|webm|avi))/);
+        if (destMatch && destMatch[1]) {
+            const filename = path.basename(destMatch[1].trim());
+            console.log(`Download completed: ${filename}`);
+            return res.json({ message: "Download ready!", downloadLink: `/${filename}` });
+        }
+
         if (error) {
-            console.error(`Error: ${error.message}`);
-            return res.status(500).json({ error: "Failed to download video" });
+            console.error(`Download error: ${error.message}`);
+            return res.status(500).json({ error: "Download failed." });
         }
-
-        if (stderr) {
-            console.warn(`Warning: ${stderr}`);
-        }
-        // Log the successful download
-        console.log(`Download command executed successfully: ${command}`);
-
-
-        console.log(`Success: ${stdout}`);
-
-        // Extract file name
-        const match = stdout.match(/Destination: (.+)/);
-       
-        const filename = path.basename(match[1]);
-        const downloadUrl = `/${filename}`;
-
-        console.log(`File downloaded: ${filename}`);
-        res.json({ message: "Download ready!", downloadLink: downloadUrl });
+        
+        console.error(`Unexpected output format: ${output}`);
+        return res.status(500).json({ error: "Could not parse download result." });
     });
 });
 
@@ -110,14 +119,14 @@ app.post("/get-quality", (req, res) => {
             console.warn(`Warning: ${stderr}`);
         }
 
-        console.log(`Qualities fetched: ${stdout}`);
+        // console.log(`Qualities fetched: ${stdout}`);
 
         // Parse qualities from stdout
         const qualities = stdout
             .split("\n")
             .map(line => {
                 const [format, ...details] = line.trim().split(/\s+/);
-                console.log("Details:", details);
+                // console.log("Details:", details);
 
                 if (details[1] == "audio" && details[2] == "only") {
                     const extension = details[0];
