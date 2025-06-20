@@ -106,7 +106,7 @@ app.post("/get-quality", (req, res) => {
     console.log(`Fetching qualities for URL: ${url}`);
 
     // Fetch available qualities using yt-dlp
-    const command = `yt-dlp --cookies cookies.txt --extractor-args "youtube:player_client=tv_embedded" -F "${url}" --force-ipv4`;
+    const command = `yt-dlp --cookies cookies.txt -F "${url}" --force-ipv4`;
 
 
     exec(command, (error, stdout, stderr) => {
@@ -119,7 +119,7 @@ app.post("/get-quality", (req, res) => {
             console.warn(`Warning: ${stderr}`);
         }
 
-        // console.log(`Qualities fetched: ${stdout}`);
+        console.log(`Qualities fetched: ${stdout}`);
 
         // Parse qualities from stdout
         const qualities = stdout
