@@ -5,11 +5,21 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 
+import "dotenv/config";
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: [process.env.CORS_ORIGIN.split(",")],
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type"],
+    credentials: true
+}
+));
+
+// Parse JSON bodies
 app.use(express.json());
 
 // Get __dirname in ES Module
@@ -21,22 +31,21 @@ const downloadFolder = path.join(__dirname, "public");
 if (!fs.existsSync(downloadFolder)) {
     fs.mkdirSync(downloadFolder);
 }
-// '/' route
+
+// Serve static files
+app.use(express.static(downloadFolder));
+
 app.get("/", (req, res) => {
     res.send("YouTube Video Downloader API is running!");
 });
 
-// // Serve static files
-app.use("/downloads", express.static(downloadFolder));
-
-// API to download YouTube video
 app.post("/download", (req, res) => {
     const { url, videoFormat, audioFormat } = req.body;
 
     console.log("Received download request:", req.body);
     console.log(`URL: ${url}, Video Format: ${videoFormat}, Audio Format: ${audioFormat}`);
 
-    if (!url || ! videoFormat || !audioFormat) {
+    if (!url || !videoFormat || !audioFormat) {
         return res.status(400).json({ error: "YouTube URL and video and audio formates are required!" });
     }
 
@@ -48,7 +57,9 @@ app.post("/download", (req, res) => {
 
     //create command
     const command = `yt-dlp --cookies cookies.txt -f "${videoFormat}+${audioFormat}" "${url}" -o "${downloadFolder}/%(title)s.%(ext)s"`;
-    
+
+    //generate direct download link
+    // const command=`yt-dlp --cookies cookies.txt --extractor-args "youtube:player_client=tv_embedded" -g -f 140 "${url}"`;   
 
     exec(command, (error, stdout, stderr) => {
         if (error) {
@@ -59,22 +70,24 @@ app.post("/download", (req, res) => {
         if (stderr) {
             console.warn(`Warning: ${stderr}`);
         }
+        // Log the successful download
+        console.log(`Download command executed successfully: ${command}`);
+
 
         console.log(`Success: ${stdout}`);
 
         // Extract file name
         const match = stdout.match(/Destination: (.+)/);
-        if (!match) return res.json({ message: "Download started!" });
-
+       
         const filename = path.basename(match[1]);
-        const downloadUrl = `/downloads/${filename}`;
+        const downloadUrl = `/${filename}`;
 
-        res.json({ message: "Download ready!", url: downloadUrl });
+        console.log(`File downloaded: ${filename}`);
+        res.json({ message: "Download ready!", downloadLink: downloadUrl });
     });
 });
 
-// Add endpoint to fetch video quality options
-app.post("/get-qualities", (req, res) => {
+app.post("/get-quality", (req, res) => {
     const { url } = req.body;
 
     if (!url) {
@@ -84,7 +97,7 @@ app.post("/get-qualities", (req, res) => {
     console.log(`Fetching qualities for URL: ${url}`);
 
     // Fetch available qualities using yt-dlp
-    const command=`yt-dlp --cookies cookies.txt --extractor-args "youtube:player_client=tv_embedded" -F "${url}"`;
+    const command = `yt-dlp --cookies cookies.txt --extractor-args "youtube:player_client=tv_embedded" -F "${url}"`;
 
 
     exec(command, (error, stdout, stderr) => {
@@ -102,18 +115,41 @@ app.post("/get-qualities", (req, res) => {
         // Parse qualities from stdout
         const qualities = stdout
             .split("\n")
-            .filter(line => /^\s*\w+\s+\w+\s+\d+x\d+/.test(line)) // Filter lines with resolution (e.g., 1920x1080)
             .map(line => {
                 const [format, ...details] = line.trim().split(/\s+/);
-                return { format, details: details.join(" ") };
+                console.log("Details:", details);
+
+                if (details[1] == "audio" && details[2] == "only") {
+                    const extension = details[0];
+                    const fileSize = details[5] || "Unknown";
+                    return {
+                        audioQuality: "Audio Only",
+                        extension,
+                        format: format,
+                        fileSize,
+                    };
+                } else if (details[10] == "video" && details[11] == "only") {
+                    const resolution = details[1];
+                    const extension = details[0];
+                    const fileSize = details[4] || "Unknown";
+                    return {
+                        videoQuality: resolution,
+                        extension,
+                        format: format,
+                        fileSize,
+                    }
+                }
             });
 
+        // console.log("Qualities:", qualities);
+        // Filter out undefined entries
+        const filteredQualities = qualities.filter(q => q !== undefined);
+        // console.log("Filtered Qualities:", filteredQualities);
 
-        res.json({ qualities });
+        res.json({ qualities: filteredQualities });
     });
 });
 
-// API to stream the video
 app.get("/stream/:filename", (req, res) => {
     const filename = req.params.filename;
     const filepath = path.join(downloadFolder, filename);
