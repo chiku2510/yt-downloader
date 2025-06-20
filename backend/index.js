@@ -51,7 +51,7 @@ app.post("/download", (req, res) => {
     const downloadFolder = path.join(__dirname, "public");
     
     // Construct the yt-dlp command
-    const command = `yt-dlp --cookies cookies.txt -f "${videoFormat}+${audioFormat}" "${url}" -o "${downloadFolder}/%(title)s.%(ext)s"`;
+    const command = `yt-dlp --cookies cookies.txt -f "${videoFormat}+${audioFormat}" "${url}" -o "${downloadFolder}/%(title)s.%(ext)s" --force-ipv4`;
 
     console.log(`Executing command: ${command}`);
 
@@ -106,7 +106,7 @@ app.post("/get-quality", (req, res) => {
     console.log(`Fetching qualities for URL: ${url}`);
 
     // Fetch available qualities using yt-dlp
-    const command = `yt-dlp --cookies cookies.txt --extractor-args "youtube:player_client=tv_embedded" -F "${url}"`;
+    const command = `yt-dlp --cookies cookies.txt --extractor-args "youtube:player_client=tv_embedded" -F "${url}" --force-ipv4`;
 
 
     exec(command, (error, stdout, stderr) => {
