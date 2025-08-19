@@ -1,4 +1,6 @@
-fetch("http://localhost:3000/download", {
+import "dotenv/config";
+
+fetch(`${process.env.CORS_ORIGIN/download}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url: "https://youtu.be" })
