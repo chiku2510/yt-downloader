@@ -39,6 +39,21 @@ app.get("/", (req, res) => {
     res.send("YouTube Video Downloader API is running!");
 });
 
+
+function sanitizeFilename(filename) {
+    //if the file name contains special characters, such as spaces, emojis, backslashes, etc., it may cause issues when accessing the file via URL.
+    //replace all special characters with underscores
+    const safeFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+    //update the file name on the disk
+    const oldPath = path.join(downloadFolder, filename);
+    const newPath = path.join(downloadFolder, safeFilename);
+    if (oldPath !== newPath) {
+        fs.renameSync(oldPath, newPath);
+    }
+
+
+    return safeFilename;
+}
 app.post("/download", (req, res) => {
     const { url, videoFormat, audioFormat } = req.body;
 
@@ -49,7 +64,7 @@ app.post("/download", (req, res) => {
     }
 
     const downloadFolder = path.join(__dirname, "public");
-    
+
     // Construct the yt-dlp command
     const command = `yt-dlp --cookies cookies.txt -f "${videoFormat}+${audioFormat}" "${url}" -o "${downloadFolder}/%(title)s.%(ext)s" --force-ipv4`;
 
@@ -63,11 +78,16 @@ app.post("/download", (req, res) => {
         //check already downloaded file
         const alreadyMatch = output.match(/\[download\]\s+(.+\.(mp4|mkv|webm|avi))\s+has already been downloaded/);
         console.log(`Already Match: ${alreadyMatch}`);
-        
+
         if (alreadyMatch && alreadyMatch[1]) {
             const filename = path.basename(alreadyMatch[1].trim());
             console.log(`File already downloaded: ${filename}`);
-            return res.json({ message: "Already downloaded", downloadLink: `/${filename}` });
+
+            const safeFilename = sanitizeFilename(filename);
+            return res.json({
+                message: "Already downloaded", downloadLink: `/${safeFilename
+                    }`
+            });
         }
 
         // Check for merger completion (when combining video + audio)
@@ -75,7 +95,11 @@ app.post("/download", (req, res) => {
         if (mergerMatch && mergerMatch[1]) {
             const filename = path.basename(mergerMatch[1].trim());
             console.log(`Download completed (merged): ${filename}`);
-            return res.json({ message: "Download ready!", downloadLink: `/${filename}` });
+
+            const safeFilename = sanitizeFilename(filename);
+            return res.json({
+                message: "Download ready!", downloadLink: `/${safeFilename}`
+            });
         }
 
         // Check for single file download completion
@@ -83,14 +107,18 @@ app.post("/download", (req, res) => {
         if (destMatch && destMatch[1]) {
             const filename = path.basename(destMatch[1].trim());
             console.log(`Download completed: ${filename}`);
-            return res.json({ message: "Download ready!", downloadLink: `/${filename}` });
+            const safeFilename = sanitizeFilename(filename);
+            return res.json({
+                message: "Download ready!", downloadLink: `/${safeFilename
+                    }`
+            });
         }
 
         if (error) {
             console.error(`Download error: ${error.message}`);
             return res.status(500).json({ error: "Download failed." });
         }
-        
+
         console.error(`Unexpected output format: ${output}`);
         return res.status(500).json({ error: "Could not parse download result." });
     });
