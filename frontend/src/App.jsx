@@ -11,33 +11,33 @@ const databaseService = {
       },
       body: JSON.stringify({ url }),
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.error || 'Failed to fetch qualities');
     }
-    
+
     return await response.json();
   },
-  
+
   downloadVideo: async ({ videoQuality, audioQuality, url }) => {
     const response = await fetch(`${import.meta.env.VITE_API_URL}/download`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ 
-        url, 
-        videoFormat: videoQuality, 
-        audioFormat: audioQuality 
+      body: JSON.stringify({
+        url,
+        videoFormat: videoQuality,
+        audioFormat: audioQuality
       }),
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.error || 'Download failed');
     }
-    
+
     return await response.json();
   }
 };
@@ -47,11 +47,11 @@ function App() {
   const [qualities, setQualities] = useState([]);
   const [videoQuality, setVideoQuality] = useState('');
   const [audioQuality, setAudioQuality] = useState('');
-  
+
   // Loading states
   const [fetchingQualities, setFetchingQualities] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  
+
   // Download result
   const [downloadResult, setDownloadResult] = useState(null);
   const [error, setError] = useState(null);
@@ -78,13 +78,24 @@ function App() {
 
     try {
       const response = await databaseService.getQuality({ url });
-      
+      console.log("Received response:", response);
+
       if (!response || !response.qualities || response.qualities.length === 0) {
         throw new Error('No qualities found for the provided URL. Please check if the video is available.');
       }
-      
+
       console.log('Fetched qualities:', response.qualities);
-      setQualities(response.qualities);
+      const formatted = response.qualities.map(q => ({
+        format: q.id,            // map id → format
+        extension: q.extension,
+        videoQuality: q.resolution || null,   // map resolution → videoQuality
+        audioQuality: q.audioCodec ? "Audio" : null, // mark audio entries (if needed)
+        fileSize: q.fileSize
+      }));
+
+      setQualities(formatted);
+
+
     } catch (error) {
       setError(error.message || 'Error fetching video qualities');
       console.error('Error fetching video qualities:', error);
@@ -112,23 +123,23 @@ function App() {
     setDownloadResult(null);
 
     try {
-      const response = await databaseService.downloadVideo({ 
-        videoQuality, 
-        audioQuality, 
-        url 
+      const response = await databaseService.downloadVideo({
+        videoQuality,
+        audioQuality,
+        url
       });
-      
+
       if (!response || !response.downloadLink) {
         throw new Error('Download link not found.');
       }
-      
+
       const fullDownloadUrl = `${import.meta.env.VITE_API_URL}${response.downloadLink}`;
       setDownloadResult({
         url: fullDownloadUrl,
         filename: response.downloadLink.split('/').pop() || 'downloaded_video.mp4',
         message: response.message
       });
-      
+
       console.log('Download ready:', response);
     } catch (error) {
       setError(error.message || 'Error processing download');
@@ -159,22 +170,22 @@ function App() {
   // Helper function to format file size
   const formatFileSize = (size) => {
     if (!size || size === 'Unknown' || size === '~') return 'Size unknown';
-    
+
     // If size is already formatted with units, clean it up
     if (size.match(/[KMGT]iB/i)) {
       // Convert from binary units (KiB, MiB, GiB) to decimal (KB, MB, GB)
       return size.replace(/iB/gi, 'B');
     }
-    
+
     if (size.match(/[KMGT]B/i)) {
       // Already in good format, just ensure proper capitalization
       return size.toUpperCase().replace(/([KMGT])B/, '$1B');
     }
-    
+
     // Try to parse as bytes and convert
     const bytes = parseFloat(size);
     if (isNaN(bytes)) return size;
-    
+
     if (bytes === 0) return '0 B';
     if (bytes < 1024) return Math.round(bytes) + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -244,14 +255,14 @@ function App() {
           {qualities.length > 0 && !downloadResult && (
             <div className="mb-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Select Quality</h3>
-              
+
               {/* Quality Summary */}
               <div className="mb-4 p-3 bg-blue-50 rounded-lg">
                 <p className="text-sm text-blue-700">
                   Found {videoQualities.length} video qualities and {audioQualities.length} audio qualities
                 </p>
               </div>
-              
+
               <div className="grid md:grid-cols-2 gap-4 mb-6">
                 {/* Video Quality */}
                 <div>
@@ -323,7 +334,7 @@ function App() {
                   </div>
                 )}
               </button>
-              
+
               {downloading && (
                 <p className="text-center text-sm text-gray-600 mt-2">
                   Please wait while we download and merge your video...
@@ -391,7 +402,7 @@ function App() {
               <span>Download your processed video when the link becomes available</span>
             </div>
           </div>
-          
+
           <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
             <p className="text-xs text-yellow-700">
               <strong>Note:</strong> Video processing may take several minutes depending on video length and quality. The server downloads video and audio separately, then merges them for the best quality.

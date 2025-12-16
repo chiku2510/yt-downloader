@@ -66,7 +66,7 @@ app.post("/download", (req, res) => {
     const downloadFolder = path.join(__dirname, "public");
 
     // Construct the yt-dlp command
-    const command = `yt-dlp --cookies cookies.txt -f "${videoFormat}+${audioFormat}" "${url}" -o "${downloadFolder}/%(title)s.%(ext)s" --force-ipv4`;
+    const command = `yt-dlp -v --cookies cookies.txt -f "${videoFormat}+${audioFormat}" "${url}" -o "${downloadFolder}/%(title)s.%(ext)s" --force-ipv4`;
 
     console.log(`Executing command: ${command}`);
 
@@ -124,13 +124,107 @@ app.post("/download", (req, res) => {
     });
 });
 
+
+// for getting available qualities and sending JSON as a response to the user
+
+// app.post("/get-quality", (req, res) => {
+//     const { url } = req.body;
+
+//     if (!url) {
+//         return res.status(400).json({ error: "YouTube URL is required!" });
+//     }
+//     console.log(`Fetching qualities for URL: ${url}`);
+
+//     // Fetch available qualities using yt-dlp
+//     const command = `yt-dlp --cookies cookies.txt -J "${url}" --force-ipv4`;
+
+
+//     exec(command, (error, stdout, stderr) => {
+//         if (error) {
+//             console.error(`Error: ${error.message}`);
+//             return res.status(500).json({ error: "Failed to fetch qualities" });
+//         }
+
+//         if (stderr) {
+//             console.warn(`Warning: ${stderr}`);
+//         }
+
+//         console.log(`Qualities fetched: ${stdout}`);
+
+//         const qualities = stdout
+//             .split("\n")
+//             .map(line => line.trim())
+//             .filter(line => {
+//                 // Skip headers and separators
+//                 if (!line) return false;
+//                 if (line.startsWith("[") || line.startsWith("ID ")) return false;
+//                 if (line.startsWith("---")) return false;
+//                 return line.includes("|");
+//             })
+//             .map(line => {
+//                 // Split columns
+//                 const parts = line.split("|").map(p => p.trim());
+//                 if (parts.length < 3) return null;
+
+//                 // LEFT SIDE: ID EXT RES FPS
+//                 const left = parts[0].split(/\s+/);
+
+//                 const id = left[0];
+//                 const ext = left[1] || null;
+//                 const resolution = left[2] || null;
+//                 const fps = isNaN(left[3]) ? null : Number(left[3]);
+
+//                 // MIDDLE: FILESIZE TBR PROTO
+//                 const middle = parts[1].split(/\s+/);
+//                 const fileSize = middle[0] === "~" ? `~ ${middle[1]}` : middle[0] || null;
+//                 const tbr = middle.find(v => v.endsWith("k")) || null;
+//                 const protocol = middle[middle.length - 1] || null;
+
+//                 // RIGHT: VCODEC ACODEC + extra info
+//                 const right = parts[2].split(/\s+/);
+//                 const videoCodec = right[0] || null;
+//                 const audioCodec = right[1] || null;
+//                 const moreInfo = right.slice(2).join(" ") || null;
+
+//                 return {
+//                     id,
+//                     extension: ext,
+//                     resolution,
+//                     fps,
+//                     fileSize,
+//                     bitrate: tbr,
+//                     protocol,
+//                     videoCodec,
+//                     audioCodec,
+//                     extra: moreInfo
+//                 };
+//             })
+//             .filter(Boolean);
+
+
+
+//         console.log("Qualities:", qualities);
+
+//         // Filter out undefined entries
+//         const filteredQualities = qualities.filter(q => q !== undefined);
+//         // console.log("Filtered Qualities:", filteredQualities);
+
+//         // parse stdout as JSON
+//         res.json({ qualities: 
+//             JSON.parse(stdout)
+//         });
+//     });
+// });
+
+
+
+//manually parse yt-dlp output to get available qualities and send JSON as a response to the user
 app.post("/get-quality", (req, res) => {
     const { url } = req.body;
 
     if (!url) {
         return res.status(400).json({ error: "YouTube URL is required!" });
     }
-
     console.log(`Fetching qualities for URL: ${url}`);
 
     // Fetch available qualities using yt-dlp
@@ -149,41 +243,68 @@ app.post("/get-quality", (req, res) => {
 
         console.log(`Qualities fetched: ${stdout}`);
 
-        // Parse qualities from stdout
+
+
         const qualities = stdout
             .split("\n")
+            .map(line => line.trim())
+            .filter(line => {
+                if (!line) return false;
+                if (line.startsWith("[") || line.startsWith("ID ")) return false;
+                if (line.startsWith("---")) return false;
+                return line.includes("|");
+            })
             .map(line => {
-                const [format, ...details] = line.trim().split(/\s+/);
-                // console.log("Details:", details);
+                const parts = line.split("|").map(p => p.trim());
+                if (parts.length < 3) return null;
 
-                if (details[1] == "audio" && details[2] == "only") {
-                    const extension = details[0];
-                    const fileSize = details[5] || "Unknown";
-                    return {
-                        audioQuality: "Audio Only",
-                        extension,
-                        format: format,
-                        fileSize,
-                    };
-                } else if (details[10] == "video" && details[11] == "only") {
-                    const resolution = details[1];
-                    const extension = details[0];
-                    const fileSize = details[4] || "Unknown";
-                    return {
-                        videoQuality: resolution,
-                        extension,
-                        format: format,
-                        fileSize,
-                    }
-                }
-            });
+                const left = parts[0].split(/\s+/);
+                const id = left[0];
+                const ext = left[1] || null;
+                const resolution = left[2] || null;
+                const fps = isNaN(left[3]) ? null : Number(left[3]);
 
-        // console.log("Qualities:", qualities);
+                const middle = parts[1].split(/\s+/);
+                const fileSize = middle[0] === "~" ? `~ ${middle[1]}` : middle[0] || null;
+                const bitrate = middle.find(v => v.endsWith("k")) || null;
+                const protocol = middle[middle.length - 1] || null;
+
+                const right = parts[2].split(/\s+/);
+                const videoCodec = right[0] || null;
+                const audioCodec = right[1] || null;
+                const extra = right.slice(2).join(" ") || null;
+
+                return {
+                    id,
+                    extension: ext,
+                    resolution,
+                    fps,
+                    fileSize,
+                    bitrate,
+                    protocol,
+                    videoCodec,
+                    audioCodec,
+                    extra
+                };
+            })
+            .filter(Boolean)
+            // ✅ REMOVE storyboard / image-only formats
+            .filter(q => q.videoCodec !== "images");
+
+
+
+
+        console.log("Qualities:", qualities);
+
         // Filter out undefined entries
         const filteredQualities = qualities.filter(q => q !== undefined);
         // console.log("Filtered Qualities:", filteredQualities);
 
-        res.json({ qualities: filteredQualities });
+        // parse stdout as JSON
+        res.json({
+            qualities:
+                filteredQualities
+        });
     });
 });
 
